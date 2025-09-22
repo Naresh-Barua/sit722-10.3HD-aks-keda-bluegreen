@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-blue
+  namespace: prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: order-api, version: blue }
+  template:
+    metadata:
+      labels: { app: order-api, version: blue }
+    spec:
+      containers:
+      - name: order
+      image: ACR_PLACEHOLDER/order-api:blue   # replace later
+      env: [{ name: APP_COLOR, value: "blue" }]
+      ports: [{ containerPort: 8000 }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: order-svc
+  namespace: prod
+spec:
+  selector: { app: order-api } # both blue & green behind same Service
+  ports:
+  - port: 80
+    targetPort: 8000
+    protocol: TCP

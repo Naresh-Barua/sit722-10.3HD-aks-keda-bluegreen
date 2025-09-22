@@ -1,0 +1,18 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-green
+  namespace: prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: order-api, version: green }
+  template:
+    metadata:
+      labels: { app: order-api, version: green }
+    spec:
+      containers:
+      - name: order
+      image: ACR_PLACEHOLDER/order-api:green  # replace later
+      env: [{ name: APP_COLOR, value: "green" }]
+      ports: [{ containerPort: 8000 }]
