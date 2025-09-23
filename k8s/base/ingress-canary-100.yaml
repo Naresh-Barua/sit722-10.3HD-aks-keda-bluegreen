@@ -6,7 +6,7 @@ metadata:
   annotations:
     kubernetes.io/ingress.class: nginx
     nginx.ingress.kubernetes.io/canary: "true"
-    nginx.ingress.kubernetes.io/canary-weight: "10"
+    nginx.ingress.kubernetes.io/canary-weight: "100"
 spec:
   rules:
   - http:
@@ -18,5 +18,3 @@ spec:
             name: order-svc-green
             port:
               number: 80
-
-
