@@ -1,0 +1,116 @@
+name: CD
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy (defaults to commit SHA)"
+        required: false
+
+env:
+  # ===== Fill these AFTER Azure setup =====
+  AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  AZURE_TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
+  AZURE_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}   # OIDC app client id
+  AKS_RESOURCE_GROUP:    rg-103hd                         # <- replace after create
+  AKS_CLUSTER_NAME:      aks-103hd                        # <- replace after create
+  K8S_NAMESPACE:         prod
+  ACR_LOGIN_SERVER:      ACR_PLACEHOLDER                  # <- replace after create (e.g., myacr.azurecr.io)
+  IMAGE_NAME:            order-api
+  IMAGE_TAG:             ${{ github.event.inputs.image_tag || github.sha }}
+
+jobs:
+  # Always runs: shows the exact steps we'll run in the real job
+  simulate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Plan CD steps
+        run: |
+          echo "Will deploy GREEN image: ${ACR_LOGIN_SERVER}/${IMAGE_NAME}:$IMAGE_TAG"
+          echo "kubectl -n ${K8S_NAMESPACE} apply -f k8s/base/prod-namespace.yaml"
+          echo "kubectl -n ${K8S_NAMESPACE} apply -f k8s/app/order-green.yaml"
+          echo "kubectl -n ${K8S_NAMESPACE} set image deploy/order-green order=${ACR_LOGIN_SERVER}/${IMAGE_NAME}:$IMAGE_TAG"
+          echo "Run smoke tests → if pass, set canary 10% → 30% → 100%"
+          echo "kubectl -n ${K8S_NAMESPACE} apply -f k8s/base/ingress-canary-10.yaml"
+          echo "kubectl -n ${K8S_NAMESPACE} apply -f k8s/base/ingress-canary-30.yaml"
+          echo "kubectl -n ${K8S_NAMESPACE} apply -f k8s/base/ingress-canary-100.yaml"
+          echo "If fail → rollback: delete canary ingress + scale down green"
+
+  # Real deploy only runs once Azure secrets are present
+  deploy:
+    
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write     # for OIDC to Azure
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1) Login to Azure using OIDC (no secrets needed beyond the three IDs)
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id:     ${{ env.AZURE_CLIENT_ID }}
+          tenant-id:     ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      # 2) Get AKS context
+      - name: Set AKS context
+        uses: azure/aks-set-context@v4
+        with:
+          resource-group: ${{ env.AKS_RESOURCE_GROUP }}
+          cluster-name:   ${{ env.AKS_CLUSTER_NAME }}
+
+      # 3) Ensure namespace + stable ingress exist
+      - name: Apply base
+        run: |
+          kubectl apply -f k8s/base/prod-namespace.yaml
+          kubectl -n $K8S_NAMESPACE apply -f k8s/base/ingress-order.yaml
+
+      # 4) Deploy GREEN with the new image tag
+      - name: Deploy green
+        run: |
+          kubectl -n $K8S_NAMESPACE apply -f k8s/app/order-green.yaml
+          kubectl -n $K8S_NAMESPACE set image deploy/order-green order=${ACR_LOGIN_SERVER}/${IMAGE_NAME}:$IMAGE_TAG
+          kubectl -n $K8S_NAMESPACE rollout status deploy/order-green --timeout=120s
+
+      # 5) Smoke tests against Ingress (replace URL on Wednesday)
+      - name: Smoke tests (health)
+        run: |
+          set -e
+          # TODO: fill INGRESS_URL with your public IP/DNS after NGINX is installed
+          INGRESS_URL="http://REPLACE_INGRESS_URL/health"
+          echo "Hitting $INGRESS_URL"
+          for i in {1..10}; do curl -sfL "$INGRESS_URL" && break || sleep 3; done
+          curl -sfL "$INGRESS_URL" | jq .
+
+      # 6) Canary to 10%, then 30%, then 100%
+      - name: Canary 10%
+        run: |
+          kubectl -n $K8S_NAMESPACE apply -f k8s/base/ingress-canary-10.yaml
+          sleep 10
+          curl -s "$INGRESS_URL" || true
+      - name: Canary 30%
+        run: |
+          kubectl -n $K8S_NAMESPACE apply -f k8s/base/ingress-canary-30.yaml
+          sleep 10
+          curl -s "$INGRESS_URL" || true
+      - name: Canary 100%
+        run: |
+          kubectl -n $K8S_NAMESPACE apply -f k8s/base/ingress-canary-100.yaml
+          sleep 10
+          curl -s "$INGRESS_URL" || true
+
+      # 7) Promote (optional pattern): swap labels or keep green as new blue
+      - name: Promote green as new stable (label swap)
+        run: |
+          echo "Promotion strategy can be label swap or re-point service; we'll finalize Wednesday."
+
+      # 8) Cleanup canary ingress
+      - name: Remove canary ingress
+        run: |
+          kubectl -n $K8S_NAMESPACE delete ingress order-ing-canary --ignore-not-found=true
+
