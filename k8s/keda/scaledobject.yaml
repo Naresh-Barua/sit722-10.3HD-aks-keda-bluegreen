@@ -1,0 +1,23 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: order-queue-scaler
+  namespace: prod
+spec:
+  scaleTargetRef:
+    name: order-blue        # start by scaling blue (stable); we can later point this to green too
+  minReplicaCount: 1
+  maxReplicaCount: 5
+  cooldownPeriod: 60        # seconds to scale back down after idle
+  pollingInterval: 5        # seconds between checks
+  fallback:
+    failureThreshold: 3     # after 3 failed polls, use default
+    replicas: 1
+  triggers:
+    - type: azure-servicebus
+      metadata:
+        queueName: orders-queue              # <-- replace if you pick a different queue name
+        messageCount: "50"                   # scale when >= 50 messages pending
+        activationMessageCount: "1"          # (optional) start scaling when >= 1
+      authenticationRef:
+        name: sb-trigger-auth

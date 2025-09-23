@@ -1,0 +1,12 @@
+
+
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: sb-trigger-auth
+  namespace: prod
+spec:
+  secretTargetRef:
+    - parameter: connection
+      name: sb-conn       # <-- Secret we will create on Wednesday
+      key: connection     # <-- Key inside the Secret
