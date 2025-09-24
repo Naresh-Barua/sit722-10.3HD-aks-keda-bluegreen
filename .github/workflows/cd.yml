@@ -14,10 +14,10 @@ env:
   AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
   AZURE_TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
   AZURE_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}   # OIDC app client id
-  AKS_RESOURCE_GROUP:    rg-103hd                         # <- replace after create
-  AKS_CLUSTER_NAME:      aks-103hd                        # <- replace after create
+  AKS_RESOURCE_GROUP:    rg-aks-keda
+  AKS_CLUSTER_NAME:      aks-keda
   K8S_NAMESPACE:         prod
-  ACR_LOGIN_SERVER:      ACR_PLACEHOLDER                  # <- replace after create (e.g., myacr.azurecr.io)
+  ACR_LOGIN_SERVER:      acrakskeda.azurecr.io
   IMAGE_NAME:            order-api
   IMAGE_TAG:             ${{ github.event.inputs.image_tag || github.sha }}
 
@@ -82,7 +82,7 @@ jobs:
         run: |
           set -e
           # TODO: fill INGRESS_URL with your public IP/DNS after NGINX is installed
-          INGRESS_URL="http://REPLACE_INGRESS_URL/health"
+          INGRESS_URL="http://4.237.225.153/health"
           echo "Hitting $INGRESS_URL"
           for i in {1..10}; do curl -sfL "$INGRESS_URL" && break || sleep 3; done
           curl -sfL "$INGRESS_URL" | jq .
