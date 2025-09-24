@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: order
-      image: ACR_PLACEHOLDER/order-api:blue
+      image: /order-api:blue
       env:
         - name: APP_COLOR
           value: "blue"
